@@ -66,7 +66,7 @@ Lo script `translate.pl` è un add-on per il client IRC Irssi, che permette di t
 
 
 ## Utilizzo
-
+- Comando /tr codice_lingua testo per la traduzione rapida nella lingua specificata.
 - Per visualizzare l'elenco delle attuali regole di traduzione:
 	- /translate list
 
