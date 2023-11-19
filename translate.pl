@@ -5,7 +5,7 @@ use Irssi::TextUI;
 use LWP::UserAgent;
 use JSON;
 
-our $VERSION = '1.0';
+our $VERSION = '1.1';
 our %IRSSI = (
     authors     => 'Jerzy (kofany) Dabrowski',
     name        => 'translate.pl',
