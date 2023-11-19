@@ -30,10 +30,63 @@ Irssi::command_bind('translate list', \&on_translate_list);
 Irssi::command_bind('translate remove', \&on_translate_remove);
 Irssi::command_bind('translate save', \&on_translate_save);
 Irssi::command_bind('translate reload', \&on_translate_reload);
+Irssi::command_bind('tr', 'on_tr_command');
 
 Irssi::signal_add('message public', \&on_message);
 Irssi::signal_add('message private', \&on_message);
 Irssi::signal_add('send text', \&on_send_text);
+
+sub detect_language {
+    my ($text) = @_;
+    return unless $text;
+
+    my $ua = LWP::UserAgent->new;
+    my $api_key = Irssi::settings_get_str('translate_api_key');
+    return unless $api_key;
+
+    my $response = $ua->post("https://translation.googleapis.com/language/translate/v2/detect", {
+        key => $api_key,
+        q => $text
+    });
+
+    if ($response->is_success) {
+        my $content = decode_json($response->decoded_content);
+        my $detected_language = $content->{data}->{detections}->[0]->[0]->{language};
+        return $detected_language;
+    } else {
+        Irssi::print("Language detection error: " . $response->status_line);
+        return;
+    }
+}
+
+sub on_tr_command {
+    my ($data, $server, $item) = @_;
+    my ($target_lang, $text_to_translate) = $data =~ /^(\S+)\s+(.*)$/;
+
+    if (!$target_lang || !$text_to_translate) {
+        Irssi::print("Usage: /tr target_language text_to_translate", MSGLEVEL_CLIENTCRAP);
+        return;
+    }
+
+    my $source_lang = detect_language($text_to_translate);
+    if (!$source_lang) {
+        Irssi::print("Could not detect source language.", MSGLEVEL_CLIENTCRAP);
+        return;
+    }
+
+    my $translation = translate($text_to_translate, $source_lang, $target_lang);
+    if ($translation) {
+        # Wysyłanie przetłumaczonego tekstu do aktywnego okna czatu
+        if ($item && ($item->{type} eq "CHANNEL" || $item->{type} eq "QUERY")) {
+            # Wysyłanie na kanał lub w prywatnej rozmowie
+            $server->command("msg " . $item->{name} . " " . $translation);
+        } else {
+            Irssi::print("Translation error: Not in a channel or query window.", MSGLEVEL_CLIENTCRAP);
+        }
+    } else {
+        Irssi::print("Translation error or no translation available.", MSGLEVEL_CLIENTCRAP);
+    }
+}
 
 sub on_translate {
     my ($data, $server, $item) = @_;
@@ -101,14 +154,35 @@ sub on_message {
     my ($server, $msg, $nick, $address, $target) = @_;
     my $chatnet = $server->{chatnet};
 
-    # Rozpoznawanie, czy to wiadomość prywatna czy z kanału
     my $is_private = $target eq $server->{nick};
-    my $translate_key = $is_private ? $nick : $target; # Użyj nicku dla priv, nazwy kanału dla kanałów
+    my $translate_key = $is_private ? $nick : $target;
 
     if (exists $translate_list_in{$translate_key}) {
         my $langs = $translate_list_in{$translate_key};
-        my $translation = translate($msg, $langs->{source_lang}, $langs->{target_lang});
-        Irssi::signal_continue($server, $translation, $nick, $address, $target) if $translation;
+        my $detected_lang = detect_language($msg);
+
+        my $char_count = length($msg);
+        my $contains_spaces = $msg =~ /\s/;
+        my $is_alphanumeric = $msg =~ /^[a-zA-Z0-9]+$/;
+
+        my $should_translate = 0;
+        if ($contains_spaces) {
+            $should_translate = $char_count >= 6;
+        } elsif ($is_alphanumeric) {
+            $should_translate = $char_count >= 4;
+        }
+
+        if ($should_translate && $detected_lang ne $langs->{target_lang}) {
+            my $translation = translate($msg, $detected_lang, $langs->{target_lang});
+            if ($translation) {
+                my $translated_text = $translation . " (from $detected_lang)";
+                # Dodaj oryginalny tekst, jeśli wiadomość ma mniej niż 8 znaków
+                if ($char_count < 8) {
+                    $translated_text .= " (original: $msg)";
+                }
+                Irssi::signal_continue($server, $translated_text, $nick, $address, $target);
+            }
+        }
     }
 }
 
