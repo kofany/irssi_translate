@@ -66,7 +66,7 @@ Skrypt `translate.pl` jest dodatkiem do klienta IRC Irssi, umożliwiającym tłu
 
 
 ## Użycie
-
+- Komedna /tr kod_języka tekst do szybkiego tłumaczenia na dany język
 - Aby wyświetlić listę aktualnych reguł tłumaczenia:
 	- /translate list
 
